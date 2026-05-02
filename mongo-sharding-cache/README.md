@@ -1,4 +1,13 @@
-# MongoDB sharding with replica sets
+# MongoDB sharding, replica sets and Redis cache
+
+Проект реализует схему из задания 4: шардирование с репликацией из второго варианта схемы и Redis-кеш для эндпоинта `/<collection_name>/users`.
+
+- `configsvr` - config server.
+- `shard1` - replica set из `s1-r1`, `s1-r2`, `s1-r3`.
+- `shard2` - replica set из `s2-r1`, `s2-r2`, `s2-r3`.
+- `mongos-router-1`, `mongos-router-2` - роутеры.
+- `redis` - кеш.
+- `pymongo_api` - приложение, подключенное к `mongos` и Redis.
 
 ## Запуск
 
@@ -62,8 +71,6 @@ EOF
 
 ## Добавление шардов
 
-Команды выполняются через любой `mongos`. Ниже используется `mongos-router-1`.
-
 ```shell
 docker compose exec -T mongos-router-1 mongosh --port 27020 --quiet <<EOF
 sh.addShard("shard1/s1-r1:27018,s1-r2:27018,s1-r3:27018")
@@ -72,6 +79,8 @@ EOF
 ```
 
 ## Создание БД и коллекции
+
+База данных называется `somedb`, коллекция - `helloDoc`.
 
 ```shell
 docker compose exec -T mongos-router-1 mongosh --port 27020 --quiet <<EOF
@@ -94,15 +103,7 @@ for (let i = 0; i < 1000; i++) {
 EOF
 ```
 
-## Проверка
-
-Проверить статус шардирования:
-
-```shell
-docker compose exec -T mongos-router-1 mongosh --port 27020 --quiet <<EOF
-sh.status()
-EOF
-```
+## Проверка MongoDB
 
 Проверить количество документов через роутер:
 
@@ -142,6 +143,24 @@ docker compose exec -T s2-r1 mongosh --port 27019 --quiet <<EOF
 rs.status().members.length
 EOF
 ```
+
 API доступен на `http://localhost:8080`, Swagger - на `http://localhost:8080/docs`.
 
-Главная страница API (`http://localhost:8080`) показывает общее количество документов в `somedb.helloDoc`
+Главная страница API (`http://localhost:8080`) показывает общее количество документов в `somedb.helloDoc`, количество документов на каждом shard-е, количество реплик и `cache_enabled: true`.
+
+## Проверка кеширования
+
+Кеширование включено переменной окружения:
+
+```yaml
+REDIS_URL: "redis://redis:6379"
+```
+
+Эндпоинт с кешем: `GET /<collection_name>/users`. Для тестовой коллекции:
+
+```shell
+curl -w "\ntime_total=%{time_total}\n" -o /dev/null -s http://localhost:8080/helloDoc/users
+curl -w "\ntime_total=%{time_total}\n" -o /dev/null -s http://localhost:8080/helloDoc/users
+```
+
+Первый запрос выполняется примерно за 1 секунду из-за искусственной задержки в приложении. Второй и последующие запросы должны выполняться быстрее `100ms`, пока кеш не истек.

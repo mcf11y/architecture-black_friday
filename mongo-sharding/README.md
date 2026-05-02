@@ -122,3 +122,5 @@ EOF
 ```
 
 API доступен на `http://localhost:8080`, Swagger - на `http://localhost:8080/docs`.
+
+Главная страница API (`http://localhost:8080`) показывает общее количество документов в `somedb.helloDoc`

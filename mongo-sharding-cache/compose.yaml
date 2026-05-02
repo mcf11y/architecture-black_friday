@@ -1,0 +1,169 @@
+name: sharding-repl-cache
+
+services:
+  configsvr:
+    image: mongo:latest
+    restart: unless-stopped
+    command:
+      - mongod
+      - --configsvr
+      - --replSet
+      - config_server
+      - --bind_ip_all
+      - --port
+      - "27017"
+    volumes:
+      - configsvr-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27017", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  s1-r1:
+    image: mongo:latest
+    restart: unless-stopped
+    command: ["mongod", "--shardsvr", "--replSet", "shard1", "--bind_ip_all", "--port", "27018"]
+    volumes:
+      - s1-r1-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27018", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  s1-r2:
+    image: mongo:latest
+    restart: unless-stopped
+    command: ["mongod", "--shardsvr", "--replSet", "shard1", "--bind_ip_all", "--port", "27018"]
+    volumes:
+      - s1-r2-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27018", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  s1-r3:
+    image: mongo:latest
+    restart: unless-stopped
+    command: ["mongod", "--shardsvr", "--replSet", "shard1", "--bind_ip_all", "--port", "27018"]
+    volumes:
+      - s1-r3-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27018", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  s2-r1:
+    image: mongo:latest
+    restart: unless-stopped
+    command: ["mongod", "--shardsvr", "--replSet", "shard2", "--bind_ip_all", "--port", "27019"]
+    volumes:
+      - s2-r1-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27019", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  s2-r2:
+    image: mongo:latest
+    restart: unless-stopped
+    command: ["mongod", "--shardsvr", "--replSet", "shard2", "--bind_ip_all", "--port", "27019"]
+    volumes:
+      - s2-r2-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27019", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  s2-r3:
+    image: mongo:latest
+    restart: unless-stopped
+    command: ["mongod", "--shardsvr", "--replSet", "shard2", "--bind_ip_all", "--port", "27019"]
+    volumes:
+      - s2-r3-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27019", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mongos-router-1:
+    image: mongo:latest
+    restart: unless-stopped
+    depends_on:
+      - configsvr
+      - s1-r1
+      - s1-r2
+      - s1-r3
+      - s2-r1
+      - s2-r2
+      - s2-r3
+    command: ["mongos", "--configdb", "config_server/configsvr:27017", "--bind_ip_all", "--port", "27020"]
+    ports:
+      - "27020:27020"
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27020", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mongos-router-2:
+    image: mongo:latest
+    restart: unless-stopped
+    depends_on:
+      - configsvr
+      - s1-r1
+      - s1-r2
+      - s1-r3
+      - s2-r1
+      - s2-r2
+      - s2-r3
+    command: ["mongos", "--configdb", "config_server/configsvr:27017", "--bind_ip_all", "--port", "27020"]
+    ports:
+      - "27021:27020"
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27020", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  pymongo_api:
+    restart: unless-stopped
+    build:
+      context: api_app
+      dockerfile: Dockerfile
+    depends_on:
+      - mongos-router-1
+      - mongos-router-2
+      - redis
+    ports:
+      - "8080:8080"
+    environment:
+      MONGODB_URL: "mongodb://mongos-router-1:27020,mongos-router-2:27020"
+      MONGODB_DATABASE_NAME: "somedb"
+      REDIS_URL: "redis://redis:6379"
+
+volumes:
+  configsvr-data:
+  s1-r1-data:
+  s1-r2-data:
+  s1-r3-data:
+  s2-r1-data:
+  s2-r2-data:
+  s2-r3-data:
