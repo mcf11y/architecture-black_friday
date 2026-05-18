@@ -1,0 +1,132 @@
+services:
+  configsvr:
+    image: mongo:latest
+    container_name: configsvr
+    restart: unless-stopped
+    command:
+      - mongod
+      - --configsvr
+      - --replSet
+      - config_server
+      - --bind_ip_all
+      - --port
+      - "27017"
+    ports:
+      - "27017:27017"
+    volumes:
+      - configsvr-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27017", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  shard1:
+    image: mongo:latest
+    container_name: shard1
+    restart: unless-stopped
+    command:
+      - mongod
+      - --shardsvr
+      - --replSet
+      - shard1
+      - --bind_ip_all
+      - --port
+      - "27018"
+    ports:
+      - "27018:27018"
+    volumes:
+      - shard1-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27018", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  shard2:
+    image: mongo:latest
+    container_name: shard2
+    restart: unless-stopped
+    command:
+      - mongod
+      - --shardsvr
+      - --replSet
+      - shard2
+      - --bind_ip_all
+      - --port
+      - "27019"
+    ports:
+      - "27019:27019"
+    volumes:
+      - shard2-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27019", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mongos-router-1:
+    image: mongo:latest
+    container_name: mongos-router-1
+    restart: unless-stopped
+    depends_on:
+      - configsvr
+      - shard1
+      - shard2
+    command:
+      - mongos
+      - --configdb
+      - config_server/configsvr:27017
+      - --bind_ip_all
+      - --port
+      - "27020"
+    ports:
+      - "27020:27020"
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27020", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mongos-router-2:
+    image: mongo:latest
+    container_name: mongos-router-2
+    restart: unless-stopped
+    depends_on:
+      - configsvr
+      - shard1
+      - shard2
+    command:
+      - mongos
+      - --configdb
+      - config_server/configsvr:27017
+      - --bind_ip_all
+      - --port
+      - "27021"
+    ports:
+      - "27021:27021"
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27021", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  pymongo_api:
+    container_name: pymongo_api
+    restart: unless-stopped
+    build:
+      context: api_app
+      dockerfile: Dockerfile
+    depends_on:
+      - mongos-router-1
+      - mongos-router-2
+    ports:
+      - "8080:8080"
+    environment:
+      MONGODB_URL: "mongodb://mongos-router-1:27020,mongos-router-2:27021"
+      MONGODB_DATABASE_NAME: "somedb"
+
+volumes:
+  configsvr-data:
+  shard1-data:
+  shard2-data:
